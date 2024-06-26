@@ -182,6 +182,7 @@ class ModelBasedAgent(nn.Module):
         per_hori_action_sequences = np.swapaxes(action_sequences, 0, 1)
         for acs in per_hori_action_sequences:
             #print("mpc,ac_dim", self.mpc_num_action_sequences, self.ac_dim)
+            #print(acs.shape)
             assert acs.shape == (self.mpc_num_action_sequences, self.ac_dim)
             assert obs.shape == (
                 self.ensemble_size,
@@ -193,6 +194,12 @@ class ModelBasedAgent(nn.Module):
             # HINT: use self.get_dynamics_predictions
             #print(acs.shape)
             #print(obs[0,...].shape)
+            def convert_to_numpy(tensor_or_array):
+                if isinstance(tensor_or_array, torch.Tensor):
+                    return ptu.to_numpy(tensor_or_array)
+                return tensor_or_array
+            acs = convert_to_numpy(acs)
+
             next_obs = np.stack([self.get_dynamics_predictions(i, obs[i], acs) for i in range(self.ensemble_size)], axis=0)
             assert next_obs.shape == (
                 self.ensemble_size,
@@ -230,6 +237,11 @@ class ModelBasedAgent(nn.Module):
             size=(self.mpc_num_action_sequences, self.mpc_horizon, self.ac_dim),
         )
 
+        def convert_to_numpy(tensor_or_array):
+                        if isinstance(tensor_or_array, torch.Tensor):
+                            return ptu.to_numpy(tensor_or_array)
+                        return tensor_or_array
+        
         if self.mpc_strategy == "random":
             # evaluate each action sequence and return the best one
             rewards = self.evaluate_action_sequences(obs, action_sequences)
@@ -253,7 +265,9 @@ class ModelBasedAgent(nn.Module):
                     elite_mean = self.cem_alpha * np.mean(elites_action, axis=0) + (1 - self.cem_alpha) * np.mean(others_action, axis=0)
                     elite_std = self.cem_alpha * np.std(elites_action, axis=0) + (1 - self.cem_alpha) * np.std(others_action, axis=0)
                 else:
-                    elite_seqs = torch.distributions.Normal(ptu.from_numpy(elite_mean), ptu.from_numpy(elite_std)).sample((self.mpc_num_action_sequences, self.mpc_horizon, self.ac_dim))
+                    elite_mean, elite_std = convert_to_numpy(elite_mean), convert_to_numpy(elite_std)
+                    elite_seqs = torch.distributions.Normal(ptu.from_numpy(elite_mean), ptu.from_numpy(elite_std)).sample((self.mpc_num_action_sequences,))
+                    #print(elite_seqs.shape)
                     rewards = self.evaluate_action_sequences(obs, elite_seqs)
                     elites_indices = np.argsort(rewards)[-self.cem_num_elites:]
                     others_indices = np.argsort(rewards)[:-self.cem_num_elites]
@@ -262,7 +276,10 @@ class ModelBasedAgent(nn.Module):
                     elite_mean = self.cem_alpha * torch.mean(elites_action, axis=0) + (1 - self.cem_alpha) * torch.mean(others_action, axis=0)
                     elite_std = self.cem_alpha * torch.std(elites_action, axis=0) + (1 - self.cem_alpha) * torch.std(others_action, axis=0)
             
-            return elite_mean[0]
+            
+            
+            #print(elite_mean.shape)
+            return convert_to_numpy(elite_mean[0])
 
         else:
             raise ValueError(f"Invalid MPC strategy '{self.mpc_strategy}'")
