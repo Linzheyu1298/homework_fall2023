@@ -89,6 +89,7 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         self.ac_dim = ac_dim
         self.ob_dim = ob_dim
         self.n_layers = n_layers
+        # hidden layers' size
         self.size = size
         self.learning_rate = learning_rate
         self.training = training
@@ -129,7 +130,21 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         # through it. For example, you can return a torch.FloatTensor. You can also
         # return more flexible objects, such as a
         # `torch.distributions.Distribution` object. It's up to you!
-        raise NotImplementedError
+        #raise NotImplementedError
+        observation.requires_grad_(True)
+        mean_output = self.mean_net(observation)
+        dev_output = torch.exp(self.logstd)
+        #print(f'out_grad: {mean_output.requires_grad}')
+        #print(f'dev_grad: {dev_output.requires_grad}')
+        dist = distributions.Normal(mean_output,dev_output)
+        #[1 * actdim] samples
+        sampled_act = dist.rsample()
+        tanh = nn.Tanh()
+        acts = tanh(sampled_act)
+        #print("act shape:",sampled_act.shape)
+        #print("Rsampled requires grad:", sampled_act.requires_grad)
+        return acts
+
 
     def update(self, observations, actions):
         """
@@ -141,8 +156,27 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             dict: 'Training Loss': supervised learning loss
         """
         # TODO: update the policy and return the loss
-        loss = TODO
+        self.optimizer.zero_grad()
+        #print(actions.shape)
+        acts = self.forward(observations)
+        loss = nn.MSELoss()
+        output = loss(acts,actions)
+        #print("Out Grad:", output.requires_grad)
+        output.backward()
+        self.optimizer.step()
+        
         return {
             # You can add extra logging information here, but keep this line
-            'Training Loss': ptu.to_numpy(loss),
+            'Training Loss': ptu.to_numpy(output),
         }
+    
+    def get_action(self, obs):
+        if len(obs.shape) > 1:
+            observation = obs
+        else:
+            observation = obs[None, :]
+        
+        observation = ptu.from_numpy(observation.astype(np.float32))
+        # equal to MLP.forward()
+        action = self(observation)
+        return ptu.to_numpy(action)

@@ -250,17 +250,17 @@ class ModelBasedAgent(nn.Module):
                     others_indices = np.argsort(rewards)[:-self.cem_num_elites]
                     elites_action = action_sequences[elites_indices]
                     others_action = action_sequences[others_indices]
-                    elite_mean = self.cem_alpha * np.mean(elites_action, dim=0) + (1 - self.cem_alpha) * np.mean(others_action, dim=0)
-                    elite_std = self.cem_alpha * np.std(elites_action, dim=0) + (1 - self.cem_alpha) * np.std(others_action, dim=0)
+                    elite_mean = self.cem_alpha * np.mean(elites_action, axis=0) + (1 - self.cem_alpha) * np.mean(others_action, axis=0)
+                    elite_std = self.cem_alpha * np.std(elites_action, axis=0) + (1 - self.cem_alpha) * np.std(others_action, axis=0)
                 else:
-                    elite_seqs = torch.distributions.Normal(elite_mean, elite_std).sample((self.mpc_num_action_sequences, self.mpc_horizon, self.ac_dim))
+                    elite_seqs = torch.distributions.Normal(ptu.from_numpy(elite_mean), ptu.from_numpy(elite_std)).sample((self.mpc_num_action_sequences, self.mpc_horizon, self.ac_dim))
                     rewards = self.evaluate_action_sequences(obs, elite_seqs)
                     elites_indices = np.argsort(rewards)[-self.cem_num_elites:]
                     others_indices = np.argsort(rewards)[:-self.cem_num_elites]
-                    elites_action = action_sequences[elites_indices]
-                    others_action = action_sequences[others_indices]
-                    elite_mean = self.cem_alpha * np.mean(elites_action, dim=0) + (1 - self.cem_alpha) * np.mean(others_action, dim=0)
-                    elite_std = self.cem_alpha * np.std(elites_action, dim=0) + (1 - self.cem_alpha) * np.std(others_action, dim=0)
+                    elites_action = elite_seqs[elites_indices]
+                    others_action = elite_seqs[others_indices]
+                    elite_mean = self.cem_alpha * torch.mean(elites_action, axis=0) + (1 - self.cem_alpha) * torch.mean(others_action, axis=0)
+                    elite_std = self.cem_alpha * torch.std(elites_action, axis=0) + (1 - self.cem_alpha) * torch.std(others_action, axis=0)
             
             return elite_mean[0]
 
