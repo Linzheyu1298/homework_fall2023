@@ -6,7 +6,7 @@ from torch import optim
 import numpy as np
 import torch
 from torch import distributions
-
+import time
 from cs285.infrastructure import pytorch_util as ptu
 
 
@@ -58,10 +58,26 @@ class MLPPolicy(nn.Module):
     @torch.no_grad()
     def get_action(self, obs: np.ndarray) -> np.ndarray:
         """Takes a single observation (as a numpy array) and returns a single action (as a numpy array)."""
-        # TODO: implement get_action
-        action = None
 
-        return action
+        tensor_obs = ptu.from_numpy(obs)
+        #print("tensor_obs_shape:", tensor_obs.shape)
+        
+ 
+        if self.discrete:
+            action = self.forward(tensor_obs)
+            # Sample an action from the probability distribution
+            action = distributions.Categorical(probs=action)
+            action = action.sample()
+            action = ptu.to_numpy(action)
+            #print("get action:", action)
+            return action
+        else:
+            action_means, std = self.forward(tensor_obs)
+            #print(action_means)
+            cov_matrix = torch.diag(std)
+            actions = F.tanh(distributions.MultivariateNormal(action_means,cov_matrix).sample())
+            return ptu.to_numpy(actions)
+            
 
     def forward(self, obs: torch.FloatTensor):
         """
@@ -71,15 +87,22 @@ class MLPPolicy(nn.Module):
         """
         if self.discrete:
             # TODO: define the forward pass for a policy with a discrete action space.
-            pass
+            logits = self.logits_net(obs)
+            ac_prob = F.softmax(logits)
+            #print(logits)
+            return  ac_prob
+            
         else:
             # TODO: define the forward pass for a policy with a continuous action space.
-            pass
-        return None
+            means = self.mean_net(obs)
+            std = torch.exp(self.logstd)
+            return means, std
 
     def update(self, obs: np.ndarray, actions: np.ndarray, *args, **kwargs) -> dict:
         """Performs one iteration of gradient descent on the provided batch of data."""
         raise NotImplementedError
+
+        
 
 
 class MLPPolicyPG(MLPPolicy):
@@ -97,8 +120,25 @@ class MLPPolicyPG(MLPPolicy):
         advantages = ptu.from_numpy(advantages)
 
         # TODO: implement the policy gradient actor update.
-        loss = None
+        self.optimizer.zero_grad()
 
+        if self.discrete:
+            actions = torch.tensor(actions, dtype=torch.int64)
+            ac_prob = self.forward(obs)
+            log_probs = torch.log(ac_prob)
+            selected_log_probs = log_probs.gather(1, actions).squeeze(1)
+        else:
+            means, std = self.forward(obs)
+            covariance_matrix = torch.diag(std)
+            dist = distributions.MultivariateNormal(means, covariance_matrix)
+            selected_log_probs = dist.log_prob(actions)
+            #print("log_prob:", selected_log_probs)
+            #time.sleep(1)
+        
+        loss = torch.neg(torch.mean(torch.mul(selected_log_probs, advantages)))
+        loss.backward()
+        self.optimizer.step()
+        
         return {
             "Actor Loss": ptu.to_numpy(loss),
         }

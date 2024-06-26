@@ -68,7 +68,8 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             action = env.action_space.sample()
         else:
             # TODO(student): Select an action
-            action = ...
+            assert not torch.isnan(ptu.from_numpy(observation)).any(), "Observation contains NaN"
+            action = agent.get_action(observation=observation)
 
         # Step the environment and add the data to the replay buffer
         next_observation, reward, done, info = env.step(action)
@@ -90,8 +91,9 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         # Train the agent
         if step >= config["training_starts"]:
             # TODO(student): Sample a batch of config["batch_size"] transitions from the replay buffer
-            batch = ...
-            update_info = ...
+            batch = replay_buffer.sample(config["batch_size"])
+            batch = ptu.from_numpy(batch)
+            update_info = agent.update(batch["observations"], batch["actions"], batch["rewards"], batch["next_observations"], batch["dones"], step)
 
             # Logging
             update_info["actor_lr"] = agent.actor_lr_scheduler.get_last_lr()[0]
@@ -162,6 +164,7 @@ def main():
     logdir_prefix = "hw3_sac_"  # keep for autograder
 
     config = make_config(args.config_file)
+    print(config)
     logger = make_logger(logdir_prefix, config)
 
     run_training_loop(config, logger, args)

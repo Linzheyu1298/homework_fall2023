@@ -71,6 +71,13 @@ class MLPPolicy(nn.Module):
         able to differentiate through it. For example, you can return a torch.FloatTensor. You can also return more
         flexible objects, such as a `torch.distributions.Distribution` object. It's up to you!
         """
+        #assert not torch.isnan(obs).any(), "Obs contains NaN"
+        #assert not torch.isinf(obs).any(), "Obs contains Inf"
+        #for name, param in self.net.named_parameters():
+        #    assert not torch.isnan(param).any(), f"Parameter {name} contains NaN"
+        #    assert not torch.isinf(param).any(), f"Parameter {name} contains Inf"
+        
+        
         if self.discrete:
             logits = self.logits_net(obs)
             action_distribution = distributions.Categorical(logits=logits)
@@ -79,11 +86,15 @@ class MLPPolicy(nn.Module):
                 mean, std = torch.chunk(self.net(obs), 2, dim=-1)
                 std = torch.nn.functional.softplus(std) + 1e-2
             else:
+                
                 mean = self.net(obs)
                 if self.fixed_std:
                     std = self.std
                 else:
                     std = torch.nn.functional.softplus(self.std) + 1e-2
+
+            assert not torch.isnan(mean).any(), "Mean contains NaN"
+            assert not torch.isnan(std).any(), "Std contains NaN"
 
             if self.use_tanh:
                 action_distribution = make_tanh_transformed(mean, std)
